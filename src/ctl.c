@@ -65,6 +65,7 @@ CTL_PROTO(version)
 CTL_PROTO(epoch)
 CTL_PROTO(background_thread)
 CTL_PROTO(max_background_threads)
+CTL_PROTO(max_mem_size)
 CTL_PROTO(thread_tcache_enabled)
 CTL_PROTO(thread_tcache_flush)
 CTL_PROTO(thread_peak_read)
@@ -440,6 +441,7 @@ static const ctl_named_node_t opt_node[] = {
 	{NAME("mutex_max_spin"),	CTL(opt_mutex_max_spin)},
 	{NAME("background_thread"),	CTL(opt_background_thread)},
 	{NAME("max_background_threads"),	CTL(opt_max_background_threads)},
+	{NAME("max_mem_size"),	CTL(opt_max_mem_size)},
 	{NAME("dirty_decay_ms"), CTL(opt_dirty_decay_ms)},
 	{NAME("muzzy_decay_ms"), CTL(opt_muzzy_decay_ms)},
 	{NAME("stats_print"),	CTL(opt_stats_print)},
@@ -906,6 +908,7 @@ static const ctl_named_node_t	root_node[] = {
 	{NAME("epoch"),		CTL(epoch)},
 	{NAME("background_thread"),	CTL(background_thread)},
 	{NAME("max_background_threads"),	CTL(max_background_threads)},
+	{NAME("max_mem_size"),	CTL(max_mem_size)},
 	{NAME("thread"),	CHILD(named, thread)},
 	{NAME("config"),	CHILD(named, config)},
 	{NAME("opt"),		CHILD(named, opt)},
@@ -2114,6 +2117,41 @@ max_background_threads_ctl(tsd_t *tsd, const size_t *mib,
 	ret = 0;
 label_return:
 	malloc_mutex_unlock(tsd_tsdn(tsd), &background_thread_lock);
+	malloc_mutex_unlock(tsd_tsdn(tsd), &ctl_mtx);
+
+	return ret;
+}
+
+static int
+max_mem_size_ctl(tsd_t *tsd, const size_t *mib,
+    size_t miblen, void *oldp, size_t *oldlenp, void *newp,
+    size_t newlen) {
+	int ret;
+	size_t oldval;
+
+	malloc_mutex_lock(tsd_tsdn(tsd), &ctl_mtx);
+	//malloc_mutex_lock(tsd_tsdn(tsd), &background_thread_lock);
+	if (newp == NULL) {
+		oldval = max_mem_size;
+		READ(oldval, size_t);
+	} else {
+		if (newlen != sizeof(size_t)) {
+			ret = EINVAL;
+			goto label_return;
+		}
+		oldval = max_mem_size;
+		READ(oldval, size_t);
+
+		size_t newval = *(size_t *)newp;
+		if (newval == oldval) {
+			ret = 0;
+			goto label_return;
+		}
+
+		max_mem_size = newval;
+	}
+	ret = 0;
+label_return:
 	malloc_mutex_unlock(tsd_tsdn(tsd), &ctl_mtx);
 
 	return ret;
